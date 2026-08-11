@@ -1,0 +1,192 @@
+# =============================================================================
+# rl_trading_v2 — Master Experiment Configuration
+# All hyperparameters, asset universe, walk-forward splits, and ablation flags.
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Asset Universe
+# ---------------------------------------------------------------------------
+assets:
+  tech:    [AAPL, NVDA, MSFT]
+  finance: [JPM]
+  energy:  [XOM]
+  etf:     [SPY, QQQ]
+
+# Flat list used internally (order preserved)
+tickers: [AAPL, NVDA, MSFT, JPM, XOM, SPY, QQQ]
+
+# Market-fear shared feature
+vix_ticker: "^VIX"
+
+# ---------------------------------------------------------------------------
+# Data Settings
+# ---------------------------------------------------------------------------
+data:
+  source: yfinance                 # yfinance | alpaca
+  finnhub_key: ""                  # Fill in for news headlines
+  cache_dir: "data/cache_v2"
+  force_refetch: false
+
+# ---------------------------------------------------------------------------
+# Walk-Forward Splits  (train_start → train_end → test_end, inclusive)
+# ---------------------------------------------------------------------------
+walk_forward:
+  - id: fold_1
+    train_start: "2020-01-01"
+    train_end:   "2022-12-31"
+    test_start:  "2023-01-01"
+    test_end:    "2023-12-31"
+  - id: fold_2
+    train_start: "2021-01-01"
+    train_end:   "2023-12-31"
+    test_start:  "2024-01-01"
+    test_end:    "2024-12-31"
+  - id: fold_3
+    train_start: "2022-01-01"
+    train_end:   "2024-12-31"
+    test_start:  "2025-01-01"
+    test_end:    "2025-12-31"
+
+# ---------------------------------------------------------------------------
+# Feature Engineering
+# ---------------------------------------------------------------------------
+features:
+  lookback_returns: 5              # ret_1d … ret_5d
+  rsi_window: 14
+  ma_short: 20
+  ma_long:  50
+  vol_window: 10                   # Realized volatility (rolling std of returns)
+  normalize: zscore                # zscore | minmax | none
+  obs_noise_std: 0.01              # Gaussian noise added to observations during training
+                                   # Set to 0.0 to disable
+
+# ---------------------------------------------------------------------------
+# Sentiment
+# ---------------------------------------------------------------------------
+sentiment:
+  backend: vader                   # finbert | vader | none
+                                   # Use 'vader' if transformers is not installed (default).
+                                   # Switch to 'finbert' after: pip install transformers
+  model: "ProsusAI/finbert"        # Only used when backend=finbert
+  aggregation: ewm                 # ewm | mean
+  ewm_halflife: 3                  # days
+  max_articles_per_day: 5
+  no_future_leakage: true          # CRITICAL: never use same-day close sentiment for same-day signal
+
+# ---------------------------------------------------------------------------
+# Environment
+# ---------------------------------------------------------------------------
+env:
+  initial_cash: 10000.0            # Larger capital supports multi-asset positions
+  shares_per_trade: 1              # Shares per order (1 keeps position sizes tractable)
+  max_shares_long: 5               # Max long shares per asset
+  max_shares_short: 5              # Max short shares per asset
+  commission: 0.50                 # Flat commission per trade ($)
+  slippage_pct: 0.001              # 0.1% price slippage
+  bid_ask_half_spread: 0.0005      # 5 bps half-spread per side
+  borrow_cost_annual: 0.02         # 2% annual borrow cost on short positions
+  max_position_pct: 0.30           # Max 30% of portfolio in any single asset
+  execution_lag: 1                 # Fills execute at t+1 open (T+1 settlement)
+  episode_randomize_start: true    # Randomly sample episode start within training window
+  min_episode_length: 60           # Minimum trading days per episode
+
+# ---------------------------------------------------------------------------
+# Reward Function
+# ---------------------------------------------------------------------------
+reward:
+  # r = portfolio_return - lambda * drawdown_penalty - mu * turnover_penalty
+  lambda_drawdown: 0.02            # Penalty coefficient for drawdown
+  drawdown_threshold: 0.05         # Only penalize when drawdown exceeds this fraction
+  mu_turnover: 0.001               # Penalty per unit turnover (|Δposition| / portfolio)
+  holding_penalty_steps: 20        # Grace period before holding penalty activates
+  holding_penalty_rate: 0.003      # Linear penalty per day beyond grace period at max
+
+# ---------------------------------------------------------------------------
+# PPO Hyperparameters
+# ---------------------------------------------------------------------------
+ppo:
+  hidden_size: 256                 # Neurons per hidden layer
+  num_layers: 2                    # Hidden layers in shared trunk
+  dropout: 0.10
+  lr: 3e-4
+  gamma: 0.99                      # Discount factor
+  gae_lambda: 0.95                 # GAE λ
+  clip_eps: 0.20                   # PPO clip ε
+  epochs: 4                        # Gradient epochs per rollout
+  minibatch_size: 64
+  value_coef: 0.5
+  entropy_coef: 0.01               # Per-asset entropy bonus (summed across assets)
+  max_grad_norm: 0.5
+  normalize_advantages: true
+
+# ---------------------------------------------------------------------------
+# Training
+# ---------------------------------------------------------------------------
+training:
+  num_episodes: 500                # Per fold, per seed
+  eval_freq: 25                    # Evaluate every N training episodes
+  num_seeds: 5                     # Seeds: [42, 123, 456, 789, 2024]
+  seeds: [42, 123, 456, 789, 2024]
+  checkpoint_dir: "checkpoints_v2"
+  device: auto                     # auto | cpu | cuda | mps
+
+# ---------------------------------------------------------------------------
+# Results
+# ---------------------------------------------------------------------------
+results_dir: "results_v2"         # Root output directory for all artifacts
+
+# ---------------------------------------------------------------------------
+# Ablation Studies
+# Flip individual flags to isolate the contribution of each component.
+# ---------------------------------------------------------------------------
+ablations:
+  - id: full                       # Full model (all components on)
+    use_sentiment: true
+    use_short_selling: true
+    use_risk_reward: true
+    action_noise: true
+
+  - id: no_sentiment               # Remove sentiment signal
+    use_sentiment: false
+    use_short_selling: true
+    use_risk_reward: true
+    action_noise: true
+
+  - id: no_short                   # Long-only
+    use_sentiment: true
+    use_short_selling: false
+    use_risk_reward: true
+    action_noise: true
+
+  - id: naive_reward               # Raw return reward only
+    use_sentiment: true
+    use_short_selling: true
+    use_risk_reward: false
+    action_noise: true
+
+  - id: no_noise                   # No observation noise during training
+    use_sentiment: true
+    use_short_selling: true
+    use_risk_reward: true
+    action_noise: false
+
+  - id: random_prices              # Sanity check: shuffle price series
+    use_sentiment: false
+    use_short_selling: true
+    use_risk_reward: true
+    action_noise: true
+    shuffle_prices: true           # Destroys temporal structure
+
+# ---------------------------------------------------------------------------
+# Evaluation Metrics to Report
+# ---------------------------------------------------------------------------
+metrics:
+  - total_return
+  - annualized_return
+  - sharpe_ratio
+  - sortino_ratio
+  - max_drawdown
+  - calmar_ratio
+  - win_rate
+  - turnover
+  - num_trades

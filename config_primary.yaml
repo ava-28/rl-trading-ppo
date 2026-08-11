@@ -1,0 +1,162 @@
+# =============================================================================
+# rl_trading_v2 — PRIMARY STUDY (price-only)
+# =============================================================================
+# Six years of price history, three non-overlapping walk-forward folds,
+# five seeds, five ablations. No sentiment: Finnhub's free tier only returns
+# 12 months of news (verified with probe_news.py, 2026-08-09), which is too
+# short to support a walk-forward sentiment ablation. Sentiment is studied
+# separately and exploratorily in config_sentiment.yaml.
+#
+#   3 folds x 5 ablations x 5 seeds = 75 training runs
+#
+# Run:
+#   python experiments/run_suite.py --config config_primary.yaml
+# =============================================================================
+
+assets:
+  tech:    [AAPL, NVDA, MSFT]
+  finance: [JPM]
+  energy:  [XOM]
+  etf:     [SPY, QQQ]
+
+tickers: [AAPL, NVDA, MSFT, JPM, XOM, SPY, QQQ]
+
+vix_ticker: "^VIX"
+
+data:
+  source: yfinance
+  finnhub_key: ""
+  skip_news: true                  # price-only study; do not call the news API
+  cache_dir: "data/cache_v2"
+  force_refetch: false
+
+# ---------------------------------------------------------------------------
+# Walk-forward splits — train windows expand, test windows never overlap
+# ---------------------------------------------------------------------------
+walk_forward:
+  - id: fold_1
+    train_start: "2020-01-01"
+    train_end:   "2022-12-31"
+    test_start:  "2023-01-01"
+    test_end:    "2023-12-31"
+  - id: fold_2
+    train_start: "2021-01-01"
+    train_end:   "2023-12-31"
+    test_start:  "2024-01-01"
+    test_end:    "2024-12-31"
+  - id: fold_3
+    train_start: "2022-01-01"
+    train_end:   "2024-12-31"
+    test_start:  "2025-01-01"
+    test_end:    "2025-12-31"
+
+features:
+  lookback_returns: 5
+  rsi_window: 14
+  ma_short: 20
+  ma_long:  50
+  vol_window: 10
+  normalize: zscore
+  obs_noise_std: 0.01
+
+sentiment:
+  backend: none                    # returns 0.0 everywhere
+  model: "ProsusAI/finbert"
+  aggregation: ewm
+  ewm_halflife: 3
+  max_articles_per_day: 5
+  no_future_leakage: true
+
+env:
+  initial_cash: 10000.0
+  shares_per_trade: 1
+  max_shares_long: 5
+  max_shares_short: 5
+  commission: 0.50
+  slippage_pct: 0.001
+  bid_ask_half_spread: 0.0005
+  borrow_cost_annual: 0.02
+  max_position_pct: 0.30
+  execution_lag: 1
+  episode_randomize_start: true
+  min_episode_length: 60
+
+reward:
+  lambda_drawdown: 0.02
+  drawdown_threshold: 0.05
+  mu_turnover: 0.001
+  holding_penalty_steps: 20
+  holding_penalty_rate: 0.003
+
+ppo:
+  hidden_size: 256
+  num_layers: 2
+  dropout: 0.10
+  lr: 3e-4
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_eps: 0.20
+  epochs: 4
+  minibatch_size: 64
+  value_coef: 0.5
+  entropy_coef: 0.01
+  max_grad_norm: 0.5
+  normalize_advantages: true
+
+training:
+  num_episodes: 500
+  eval_freq: 25
+  num_seeds: 5
+  seeds: [42, 123, 456, 789, 2024]
+  checkpoint_dir: "checkpoints_primary"
+  device: auto
+
+results_dir: "results_primary"
+
+# ---------------------------------------------------------------------------
+# Ablations — sentiment removed from all configurations, since there is none.
+# `random_prices` is the sanity check: if the agent still appears to profit on
+# shuffled prices, the evaluation harness is leaking information somewhere.
+# ---------------------------------------------------------------------------
+ablations:
+  - id: full
+    use_sentiment: false
+    use_short_selling: true
+    use_risk_reward: true
+    action_noise: true
+
+  - id: no_short
+    use_sentiment: false
+    use_short_selling: false
+    use_risk_reward: true
+    action_noise: true
+
+  - id: naive_reward
+    use_sentiment: false
+    use_short_selling: true
+    use_risk_reward: false
+    action_noise: true
+
+  - id: no_noise
+    use_sentiment: false
+    use_short_selling: true
+    use_risk_reward: true
+    action_noise: false
+
+  - id: random_prices
+    use_sentiment: false
+    use_short_selling: true
+    use_risk_reward: true
+    action_noise: true
+    shuffle_prices: true
+
+metrics:
+  - total_return
+  - annualized_return
+  - sharpe_ratio
+  - sortino_ratio
+  - max_drawdown
+  - calmar_ratio
+  - win_rate
+  - turnover
+  - num_trades

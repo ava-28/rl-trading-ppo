@@ -1,0 +1,49 @@
+# Environments
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Cached market data — regenerable, and large
+data/cache_v2/
+data/cache/
+*.parquet
+
+# Model checkpoints — 12 MB of binaries, no value to a reader
+checkpoints/
+checkpoints_*/
+results_*/checkpoints/
+*.pt
+*.pth
+*.pkl
+
+# Bulky per-seed run artefacts
+results_*/equity_curves/
+results_*/trade_logs/
+results_*/*.log
+
+# Logs
+*.log
+nohup.out
+
+# Secrets — never commit
+.env
+.env.*
+secrets.yaml
+*_key.txt
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# ---------------------------------------------------------------------------
+# Keep the headline results. These are small and the README links them.
+# ---------------------------------------------------------------------------
+!results_primary/plots/
+!results_primary/plots/*.png
+!results_primary/metrics_summary.json
+!results_primary/metrics_raw.csv
+!results_primary/ablation_table.csv

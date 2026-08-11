@@ -1,0 +1,35 @@
+# rl_trading_v2 — Python dependencies
+# Install with:
+#   pip3 install -r requirements.txt
+
+# Core scientific stack
+numpy>=1.24
+pandas>=2.0
+scipy>=1.11
+
+# Machine learning / RL
+torch>=2.1
+
+# Data fetching
+yfinance>=0.2.36
+requests>=2.31
+
+# Data storage (parquet cache)
+pyarrow>=14.0
+
+# Configuration
+PyYAML>=6.0
+
+# Visualisation
+matplotlib>=3.8
+seaborn>=0.13
+
+# Sentiment (VADER — lightweight, no GPU needed, installed by default)
+vaderSentiment>=3.3.2
+
+# Progress bars
+tqdm>=4.66
+
+# FinBERT (optional — only needed when sentiment.backend = finbert)
+# Uncomment and run again after verifying torch is installed:
+# transformers>=4.38
