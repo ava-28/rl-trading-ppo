@@ -43,7 +43,9 @@ This is the claim the control condition exists to support, and it is the reason 
 
 **One anomaly worth flagging.** Fold 3's agent Sharpe has a standard deviation of **0.038** across five seeds, against 1.85 in fold 1. That is implausibly tight for reinforcement learning and suggests every seed converged to a near-identical, largely static long exposure — effectively rediscovering buy-and-hold at lower leverage. The +11.30% return against buy-and-hold's +25.08% is consistent with that reading. Not yet investigated.
 
-![Equity curves](results_primary/plots/equity_curves.png)
+![Results across three folds](results_v3/summary_30runs.png)
+
+*Left: per-fold comparison. Black dots are individual seeds — note fold 3's agent seeds are nearly coincident (sd = 0.038) while fold 1's span 4 Sharpe points. Green dashes mark equal-weight buy-and-hold, above the agent in every fold. Right: pooled distributions.*
 
 ### Scope
 
@@ -87,7 +89,7 @@ python experiments/run_suite.py --config config_primary.yaml \
 python experiments/run_suite.py --config config_primary.yaml
 ```
 
-Outputs land in `results_primary/`: `metrics_raw.csv` (per seed), `metrics_summary.json` (mean ± std), `ablation_table.csv`, and `plots/`.
+Outputs land in the configured `results_dir`: `metrics_raw.csv` (per seed), `metrics_summary.json` (mean ± std), `ablation_table.csv`, and `plots/`.
 
 Prices are cached locally, so the primary study runs entirely offline.
 

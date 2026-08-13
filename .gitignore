@@ -39,9 +39,21 @@ secrets.yaml
 .vscode/
 *.swp
 
+# results_v3 was produced by two invocations (a crashed 27-run suite, then a
+# 5-run completion), so its auto-generated summary files describe only the
+# final invocation and would mislead a reader. The authoritative merged data
+# is results_v3/metrics_complete.csv, built from both. Ignore the partials.
+results_v3/metrics_raw.csv
+results_v3/metrics_summary.json
+results_v3/ablation_table.csv
+results_v3/metrics_recovered_from_log.csv
+results_v3/plots/
+
 # ---------------------------------------------------------------------------
 # Keep the headline results. These are small and the README links them.
 # ---------------------------------------------------------------------------
+!results_v3/metrics_complete.csv
+!results_v3/summary_30runs.png
 !results_primary/plots/
 !results_primary/plots/*.png
 !results_primary/metrics_summary.json
