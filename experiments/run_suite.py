@@ -144,6 +144,62 @@ def build_equity_series(equity_log: List[dict]) -> pd.Series:
 
 
 # ---------------------------------------------------------------------------
+# Incremental checkpointing
+#
+# The suite previously wrote results only after all runs finished, so a crash
+# at run 27 of 30 lost everything. Each (fold, ablation, seed) is now appended
+# to metrics_incremental.csv the moment it completes, and any combination
+# already present is skipped on restart. A crash costs one run, not the suite.
+# ---------------------------------------------------------------------------
+
+INCREMENTAL_CSV = "metrics_incremental.csv"
+
+
+def _incremental_path(results_dir: str) -> str:
+    return os.path.join(results_dir, INCREMENTAL_CSV)
+
+
+def load_completed_runs(results_dir: str) -> Dict[tuple, dict]:
+    """Map (fold_id, ablation, seed) -> metrics dict for runs already finished."""
+    path = _incremental_path(results_dir)
+    if not os.path.exists(path):
+        return {}
+    try:
+        df = pd.read_csv(path)
+    except Exception as exc:
+        log.warning(f"[resume] could not read {path}: {exc}")
+        return {}
+    done = {}
+    for _, row in df.iterrows():
+        key = (str(row["fold_id"]), str(row["ablation"]), int(row["seed"]))
+        done[key] = row.to_dict()
+    if done:
+        log.info(f"[resume] found {len(done)} completed run(s) in {path}")
+    return done
+
+
+def append_completed_run(results_dir: str, metrics: dict) -> None:
+    """Append one finished run's metrics. Written immediately, flushed to disk."""
+    path = _incremental_path(results_dir)
+    pd.DataFrame([metrics]).to_csv(
+        path, mode="a", header=not os.path.exists(path), index=False
+    )
+
+
+def _load_saved_equity(results_dir: str, fold_id: str, abl_id: str, seed: int) -> pd.Series:
+    """Recover a skipped run's equity curve from disk so plots still work."""
+    p = os.path.join(results_dir, "equity_curves", f"{fold_id}_{abl_id}_seed{seed}_equity.csv")
+    if not os.path.exists(p):
+        return pd.Series(dtype=float)
+    try:
+        s = pd.read_csv(p, index_col=0)
+        s.index = pd.to_datetime(s.index)
+        return s.iloc[:, 0]
+    except Exception:
+        return pd.Series(dtype=float)
+
+
+# ---------------------------------------------------------------------------
 # Single fold × ablation × multi-seed run
 # ---------------------------------------------------------------------------
 
@@ -177,7 +233,18 @@ def run_fold_ablation(
     per_seed_equity:    List[pd.Series]        = []
     per_seed_histories: List[List[dict]]       = []
 
+    completed = load_completed_runs(results_dir)
+
     for seed in seeds:
+        # ---- Resume: skip anything already finished in a previous invocation ----
+        key = (str(fold_id), str(abl_id), int(seed))
+        if key in completed:
+            log.info(f"\n  [{fold_id} | {abl_id} | seed={seed}]  already complete — skipping")
+            per_seed_metrics.append(completed[key])
+            per_seed_equity.append(_load_saved_equity(results_dir, fold_id, abl_id, seed))
+            per_seed_histories.append([])
+            continue
+
         log.info(f"\n  [{fold_id} | {abl_id} | seed={seed}]")
         try:
             agent, test_result, history = run_single_seed(
@@ -222,6 +289,9 @@ def run_fold_ablation(
         per_seed_metrics.append(metrics)
         per_seed_equity.append(equity)
         per_seed_histories.append(history)
+
+        # Persist this run immediately, before starting the next one.
+        append_completed_run(results_dir, metrics)
 
         # Persist equity curve and trade log
         if not equity.empty:

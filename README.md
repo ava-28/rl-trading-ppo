@@ -2,40 +2,54 @@
 
 A reinforcement learning system that trains a Proximal Policy Optimisation agent to allocate capital across a seven-asset portfolio, built to test one question properly: **does a PPO agent trained on price features have any out-of-sample edge?**
 
-**The answer, on the evidence here, is no.** The agent lost money on held-out data and performed no better than an identical agent trained on price series with all temporal structure destroyed. Details below.
+**The answer is nuanced, and both halves matter.** Across three walk-forward folds the agent significantly outperforms an identical agent trained on price series with all temporal structure destroyed (p = 0.008, Cohen's d = 1.04) — so it is learning something real. But its confidence interval contains zero, and equal-weight buy-and-hold beats it in every fold. It finds signal; the signal is not worth trading.
 
 This repository is about the evaluation methodology as much as the agent. Most published RL trading results do not survive walk-forward validation, multi-seed reporting, and a shuffled-input control. This one is set up so those checks are the default rather than an afterthought.
 
 ## Results
 
-Fold 1: trained on 2020-01-01 → 2022-12-31, tested on 2023 (250 unseen trading days). Five seeds (42, 123, 456, 789, 2024), reported as mean ± standard deviation.
+Complete 3 × 2 × 5 grid: three non-overlapping walk-forward folds, two configurations, five seeds each. **30 training runs**, 250 episodes apiece. Reported as mean ± standard deviation across seeds.
 
-| Configuration | Total return | Sharpe | Max drawdown |
+| Fold | Test window | PPO agent | Shuffled-price control | Welch *p* |
+|---|---|---|---|---|
+| 1 | 2023 | −1.324 ± 1.846 | −1.122 ± 1.437 | 0.85 |
+| 2 | 2024 | **+1.112 ± 0.314** | −1.237 ± 0.624 | **0.0003** |
+| 3 | 2025 | **+0.633 ± 0.038** | −1.554 ± 1.781 | 0.052 |
+| **Pooled** | 2023–2025 | **+0.140 ± 1.480** | −1.304 ± 1.282 | **0.008** |
+
+*(Sharpe ratios. Pooled n = 15 per condition, Cohen's d = 1.04.)*
+
+Against passive benchmarks over the same windows:
+
+| Fold | Agent return / Sharpe | Equal-weight buy-and-hold | SPY buy-and-hold |
 |---|---|---|---|
-| PPO agent (`full`) | −5.54% ± 9.95% | **−0.73 ± 1.39** | −12.11% ± 7.33% |
-| Shuffled-price control | −4.70% ± 2.75% | −1.19 ± 0.66 | −6.21% ± 2.02% |
-| Equal-weight buy-and-hold | **+57.74%** | **+2.84** | −8.78% |
-| SPY buy-and-hold | +26.71% | +1.90 | −9.97% |
+| 1 (2023) | −5.53% / −1.324 | **+57.74% / +2.836** | +26.71% / +1.896 |
+| 2 (2024) | +11.64% / +1.112 | **+43.73% / +2.385** | +25.59% / +1.882 |
+| 3 (2025) | +11.30% / +0.633 | **+25.08% / +1.131** | +18.89% / +0.996 |
 
 ### What the numbers say
 
-**The agent has no measurable edge.** Per-seed Sharpe ratios were −0.66, −1.55, **+1.27**, −0.28 and −2.43. The 95% confidence interval on the mean is **[−2.46, +1.00]** — comfortably containing zero. Taking the single positive seed as evidence of skill would be exactly the error this evaluation setup exists to prevent.
+Two findings, both true, pointing in different directions.
 
-**It is statistically indistinguishable from its own control.** Welch's t-test comparing the agent against the shuffled-price condition gives **p = 0.53**. An agent trained on prices with the time axis scrambled — carrying no learnable signal by construction — performed the same as one trained on real data.
+**1. The agent learns real temporal structure.** Pooled across folds it outperforms the shuffled-price control at **p = 0.008** with **Cohen's d = 1.04** — a large effect. In fold 2 alone, p = 0.0003. Destroying the time axis, which removes all learnable signal by construction, collapses performance. Whatever the agent is doing, it depends on genuine sequential structure in prices rather than on artefacts of the evaluation harness.
 
-**It overfits severely.** Best in-sample return was **+65.84%** against **−8.66%** out of sample on the same seed. The policy memorised the training window.
+This is the claim the control condition exists to support, and it is the reason the control is worth running: had `random_prices` matched or beaten the agent, every other number here would be void.
 
-**It did not even capture market beta.** 2023 was a strong bull year: equal-weight buy-and-hold on these same seven assets returned +57.7%, and NVDA alone returned +246%. The agent lost 5.5% while turning over 9× annually across roughly 400 trades. Its 67% win rate alongside negative total return means losing trades were substantially larger than winning ones — consistent with cutting winners early and holding losers.
+**2. It has no reliable absolute edge, and loses to doing nothing.** The 95% confidence interval on the agent's pooled Sharpe is **[−0.679, +0.960]** — it contains zero. And equal-weight buy-and-hold beats it in **all three folds on both return and Sharpe**, without a model, without training, and without paying transaction costs.
 
-**The control condition validates the harness.** Had `random_prices` come back positive, it would indicate information leaking through the evaluation pipeline and every other number here would be void. It came back negative, so the negative result is a real property of the agent rather than an artefact of measurement.
+"Learns signal, but not enough signal to be worth trading" is the honest summary.
+
+**Regime dependence dominates everything.** Fold 1 (2023): Sharpe −1.32, indistinguishable from noise. Fold 2 (2024): +1.11, strongly significant. Fold 3 (2025): +0.63. The spread across folds is larger than the spread across seeds within any fold. A single-fold study would have supported almost any conclusion you wanted — which is precisely the argument for walk-forward validation.
+
+**One anomaly worth flagging.** Fold 3's agent Sharpe has a standard deviation of **0.038** across five seeds, against 1.85 in fold 1. That is implausibly tight for reinforcement learning and suggests every seed converged to a near-identical, largely static long exposure — effectively rediscovering buy-and-hold at lower leverage. The +11.30% return against buy-and-hold's +25.08% is consistent with that reading. Not yet investigated.
 
 ![Equity curves](results_primary/plots/equity_curves.png)
 
-### Scope and honesty about it
+### Scope
 
-These figures are from **fold 1 only** (10 training runs, ~8 hours on Apple Silicon MPS). The complete design is 3 folds × 5 ablations × 5 seeds = 75 runs, roughly 60 hours, which has not been run. The `no_short`, `naive_reward` and `no_noise` ablations are implemented and configured but not yet executed.
+Two configurations (`full`, `random_prices`) across all three folds. The `no_short`, `naive_reward` and `no_noise` ablations are implemented and configured but not executed — at roughly 25 minutes per run they add ~19 hours, which has not been spent.
 
-The conclusion is therefore stated as: *no edge demonstrated on fold 1*, not *no edge exists*. Extending to folds 2 and 3 is the obvious next step, though since the failure mode is overfitting rather than undertraining, additional compute would most likely confirm rather than overturn it.
+So the component-attribution question ("which part matters?") is open. The signal-versus-noise question ("does it learn anything real?") is answered: yes, p = 0.008. The usefulness question ("should anyone trade it?") is also answered: no.
 
 ## Design
 
@@ -95,7 +109,9 @@ It is scoped to a single fold over a twelve-month window because Finnhub's free 
 
 **Why walk-forward rather than a random split.** Financial series are non-stationary and autocorrelated. A random train/test split leaks future information through both channels and produces a flattering, meaningless result.
 
-**Why five seeds.** Seed variance here (Sharpe std 1.39) is larger than any effect being tested. A single-seed result would have been pure noise reported as a finding — and would have looked impressive had seed 456 been the one chosen.
+**Why five seeds.** Seed variance within fold 1 (Sharpe std 1.85) exceeds the pooled effect being tested. A single-seed result would have been noise reported as a finding.
+
+**Why the run is resumable.** Each (fold, ablation, seed) is appended to `metrics_incremental.csv` as it completes, and already-finished combinations are skipped on restart. This was added after a power loss killed run 28 of 30 and, in the original design, would have discarded all 27 completed runs.
 
 **Why a shuffled-price control.** It is the only way to distinguish a learned signal from a harness that manufactures one. It should be run before believing any positive result.
 
@@ -106,7 +122,8 @@ It is scoped to a single fold over a twelve-month window because Finnhub's free 
 - Fixed transaction costs; real spreads widen exactly when a strategy most wants to trade
 - Seven assets is a demonstration, not a portfolio
 - No explicit regime detection; walk-forward folds may span very different market conditions
-- Results cover one fold; the full design is not yet executed
+- Three of five ablations not yet run, so component attribution is unresolved
+- Fold 3's near-zero seed variance is unexplained and may indicate policy collapse to static exposure
 
 ## Layout
 
